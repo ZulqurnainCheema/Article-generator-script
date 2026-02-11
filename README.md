@@ -43,3 +43,4 @@ Notes
 - If Chrome is already open with the same profile, close it or use a separate profile to avoid profile-lock errors.
 - `row_start` and `row_end` let you resume from a specific row.
 - If scheduling is enabled, the script will prompt for a starting date.
+- `random_delay_ms` adds jitter between actions and between rows to appear more human-like.

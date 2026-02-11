@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# playwrite generated files
+.pw-chrome-profile

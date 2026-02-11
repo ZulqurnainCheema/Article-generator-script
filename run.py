@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import csv
 import json
+import random
 import sys
 import time
 from datetime import datetime, timedelta
@@ -40,6 +41,38 @@ def read_csv(csv_cfg: Dict[str, Any]) -> List[Dict[str, str]]:
 
 def log(msg: str) -> None:
     print(msg, flush=True)
+
+
+def parse_delay_range(value: Any) -> Optional[tuple[float, float]]:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        try:
+            return float(value.get("min", 0)), float(value.get("max", 0))
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            return float(value[0]), float(value[1])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def random_sleep(delay_cfg: Optional[Dict[str, Any]], key: str) -> None:
+    if not delay_cfg:
+        return
+    rng = parse_delay_range(delay_cfg.get(key))
+    if not rng:
+        return
+    low, high = rng
+    if high <= 0:
+        return
+    if low < 0:
+        low = 0
+    if high < low:
+        low, high = high, low
+    time.sleep(random.uniform(low, high) / 1000.0)
 
 
 def prompt_start_date(default_date: Optional[str]) -> str:
@@ -230,7 +263,7 @@ def wait_for_input_value(page, selector: str, min_length: int, timeout_ms: int) 
             const el = document.querySelector(selector);
             return !!el && typeof el.value === "string" && el.value.length >= minLength;
         }""",
-        {"selector": selector, "minLength": min_length},
+        arg={"selector": selector, "minLength": min_length},
         timeout=timeout_ms,
     )
 
@@ -241,7 +274,7 @@ def wait_for_enabled(page, selector: str, timeout_ms: int) -> None:
             const el = document.querySelector(selector);
             return !!el && !el.disabled;
         }""",
-        selector,
+        arg=selector,
         timeout=timeout_ms,
     )
 
@@ -251,12 +284,33 @@ def wait_for_url_change(page, timeout_ms: int) -> bool:
     try:
         page.wait_for_function(
             """(url) => window.location.href !== url""",
-            current,
+            arg=current,
             timeout=timeout_ms,
         )
         return True
     except PlaywrightTimeoutError:
         return False
+
+
+def wait_for_button_state(
+    page, selector: str, disabled: bool, timeout_ms: int
+) -> None:
+    page.wait_for_function(
+        """({sel, disabled}) => {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            const cls = (el.className || "").toString().toLowerCase();
+            const isDisabled =
+                !!el.disabled ||
+                el.getAttribute("disabled") !== null ||
+                cls.includes("disabled") ||
+                cls.includes("loading") ||
+                el.getAttribute("aria-busy") === "true";
+            return disabled ? isDisabled : !isDisabled;
+        }""",
+        arg={"sel": selector, "disabled": disabled},
+        timeout=timeout_ms,
+    )
 
 
 def click_item(page, click_cfg: Any, timeout_ms: int) -> None:
@@ -284,6 +338,15 @@ def click_item(page, click_cfg: Any, timeout_ms: int) -> None:
             wait_enabled_before["selector"],
             int(wait_enabled_before.get("timeout_ms", timeout_ms)),
         )
+
+    wait_button_enabled_before = click_cfg.get("wait_for_button_enabled_before")
+    if wait_button_enabled_before:
+        wait_for_button_state(
+            page,
+            wait_button_enabled_before["selector"],
+            False,
+            int(wait_button_enabled_before.get("timeout_ms", timeout_ms)),
+        )
     wait_sel_before = click_cfg.get("wait_for_selector_before")
     if wait_sel_before:
         page.wait_for_selector(
@@ -293,6 +356,15 @@ def click_item(page, click_cfg: Any, timeout_ms: int) -> None:
         )
     locator.scroll_into_view_if_needed()
     locator.click(force=force)
+
+    wait_button_enabled_after = click_cfg.get("wait_for_button_enabled_after")
+    if wait_button_enabled_after:
+        wait_for_button_state(
+            page,
+            wait_button_enabled_after["selector"],
+            False,
+            int(wait_button_enabled_after.get("timeout_ms", timeout_ms)),
+        )
 
     wait_input = click_cfg.get("wait_for_input_value")
     if wait_input:
@@ -318,6 +390,22 @@ def click_item(page, click_cfg: Any, timeout_ms: int) -> None:
             wait_enabled["selector"],
             int(wait_enabled.get("timeout_ms", timeout_ms)),
         )
+
+    wait_disabled = click_cfg.get("wait_for_button_disabled")
+    if wait_disabled:
+        selector = wait_disabled["selector"]
+        timeout = int(wait_disabled.get("timeout_ms", timeout_ms))
+        retry_click = bool(wait_disabled.get("retry_click", False))
+        try:
+            wait_for_button_state(page, selector, True, timeout)
+        except PlaywrightTimeoutError:
+            if retry_click:
+                log(f"  Retry click {selector}")
+                locator.click(force=True)
+                try:
+                    wait_for_button_state(page, selector, True, timeout)
+                except PlaywrightTimeoutError:
+                    log(f"  Warning: {selector} did not become disabled.")
 
     wait_nav = click_cfg.get("wait_for_url_change")
     if wait_nav:
@@ -373,17 +461,31 @@ def apply_date_increment(
 
 
 def run_step(
-    page, step: Dict[str, Any], row: Dict[str, str], row_index: int, timeout_ms: int
+    page,
+    step: Dict[str, Any],
+    row: Dict[str, str],
+    row_index: int,
+    timeout_ms: int,
+    delay_cfg: Optional[Dict[str, Any]],
 ) -> None:
     url = step.get("url")
     if url:
         log(f"  Navigating: {url}")
-        page.goto(url, wait_until="domcontentloaded")
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                log(f"  Page URL: {page.url}")
+                log(f"  Page Title: {page.title()}")
+            except Exception:
+                pass
+        except PlaywrightTimeoutError:
+            log(f"  Navigation timeout: {url}")
 
     # Select menus
     for selector, sel_value in step.get("selects", {}).items():
         log(f"  Select {selector}: {sel_value}")
         select_menu_option(page, selector, sel_value, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Select menus from CSV (optional)
     for selector, sel_cfg in step.get("selects_from_csv", {}).items():
@@ -392,6 +494,7 @@ def run_step(
             continue
         log(f"  Select {selector}: {sel_value}")
         select_menu_option(page, selector, sel_value, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Wait for selectors before next phase
     for wait_cfg in step.get("wait_for_selectors", []):
@@ -402,11 +505,13 @@ def run_step(
         wait_timeout = int(wait_cfg.get("timeout_ms", timeout_ms))
         log(f"  Waiting for {wait_selector} ({wait_state})")
         page.wait_for_selector(wait_selector, state=wait_state, timeout=wait_timeout)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Select menus that appear after toggles
     for selector, sel_value in step.get("selects_after", {}).items():
         log(f"  Select {selector}: {sel_value}")
         select_menu_option(page, selector, sel_value, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Select menus from CSV after toggles (optional)
     for selector, sel_cfg in step.get("selects_from_csv_after", {}).items():
@@ -415,11 +520,13 @@ def run_step(
             continue
         log(f"  Select {selector}: {sel_value}")
         select_menu_option(page, selector, sel_value, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Static inputs
     for selector, value in step.get("inputs_static", {}).items():
         log(f"  Fill {selector}: [static]")
         fill_input(page, selector, value, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Required inputs from CSV
     for selector, column in step.get("inputs_from_csv_required", {}).items():
@@ -428,6 +535,7 @@ def run_step(
             raise ValueError(f"Missing required CSV value for column '{column}'")
         log(f"  Fill {selector}: {column} -> {value}")
         fill_input(page, selector, value, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Optional inputs from CSV (skip empty to keep defaults)
     for selector, column in step.get("inputs_from_csv", {}).items():
@@ -436,6 +544,7 @@ def run_step(
             continue
         log(f"  Fill {selector}: {column} -> {value}")
         fill_input(page, selector, value, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Keywords from CSV (tag input)
     kw_cfg = step.get("keywords_from_csv")
@@ -446,11 +555,13 @@ def run_step(
         if kw_col:
             log(f"  Keywords from {kw_col}")
             add_keywords(page, kw_input, row.get(kw_col, ""), kw_delim, timeout_ms)
+            random_sleep(delay_cfg, "between_actions_ms")
 
     # Checkboxes
     for selector, checked in step.get("checkboxes", {}).items():
         log(f"  Checkbox {selector}: {checked}")
         set_checkbox(page, selector, bool(checked), timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Checkboxes from CSV (optional)
     for selector, column in step.get("checkboxes_from_csv", {}).items():
@@ -460,11 +571,13 @@ def run_step(
             continue
         log(f"  Checkbox {selector}: {column} -> {parsed}")
         set_checkbox(page, selector, parsed, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Date increment (schedule per row)
     for date_cfg in step.get("date_increment", []):
         log(f"  Date increment for {date_cfg.get('selector')}")
         apply_date_increment(page, date_cfg, row, row_index, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Clicks
     for click_cfg in step.get("clicks", []):
@@ -487,6 +600,7 @@ def run_step(
             click_item(page, resolved_cfg, timeout_ms)
         else:
             click_item(page, click_cfg, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
 
     # Wait for selector if configured
     wait_cfg = step.get("wait_for")
@@ -512,6 +626,7 @@ def main() -> int:
 
     cfg = load_config(config_path)
     timeout_ms = int(cfg.get("timeout_ms", 30000))
+    delay_cfg = cfg.get("random_delay_ms")
 
     rows = read_csv(cfg["csv"]) if cfg.get("csv") else []
     if not rows:
@@ -521,6 +636,7 @@ def main() -> int:
     start = int(cfg.get("row_start", 1))
     end = int(cfg.get("row_end", len(rows)))
     rows = rows[start - 1 : end]
+    log(f"Rows to process: {len(rows)}")
 
     browser_cfg = cfg.get("browser", {})
     user_data_dir = browser_cfg.get("user_data_dir")
@@ -557,6 +673,7 @@ def main() -> int:
     elif profile_dir and browser_type != "chromium":
         log("profile_dir is set but ignored for non-chromium browsers.")
 
+    log(f"Launching Playwright (browser={browser_type}, profile={user_data_dir})")
     with sync_playwright() as p:
         if browser_type == "firefox":
             browser = p.firefox
@@ -565,6 +682,7 @@ def main() -> int:
         else:
             browser = p.chromium
 
+        log("Launching persistent context...")
         context = browser.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=headless,
@@ -572,8 +690,17 @@ def main() -> int:
             slow_mo=slow_mo,
             args=args,
         )
-        page = context.pages[0] if context.pages else context.new_page()
+        log("Context launched.")
+        log(f"Existing pages: {len(context.pages)}")
+        # Always create a fresh tab to control, then bring it to front.
+        page = context.new_page()
         page.set_default_timeout(timeout_ms)
+        page.set_default_navigation_timeout(timeout_ms)
+        try:
+            page.bring_to_front()
+        except PlaywrightTimeoutError:
+            pass
+        log(f"Using page: {page.url}")
 
         total = len(rows)
         for idx, row in enumerate(rows, start=1):
@@ -582,7 +709,8 @@ def main() -> int:
                 repeat = step.get("repeat", "per_row")
                 if repeat == "once" and idx != 1:
                     continue
-                run_step(page, step, row, idx, timeout_ms)
+                run_step(page, step, row, idx, timeout_ms, delay_cfg)
+            random_sleep(delay_cfg, "between_rows_ms")
 
         log("Done.")
         context.close()

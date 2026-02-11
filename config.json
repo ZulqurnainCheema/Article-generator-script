@@ -3,9 +3,9 @@
   "row_start": 1,
   "row_end": 999999,
   "browser": {
-    "type": "firefox",
-    "executable_path": "/usr/bin/firefox",
-    "user_data_dir": "~/.mozilla/firefox/spcudzwe.default",
+    "type": "chromium",
+    "executable_path": null,
+    "user_data_dir": "./.pw-chrome-profile",
     "profile_dir": "",
     "headless": false,
     "slow_mo_ms": 50
@@ -14,6 +14,10 @@
     "path": "input.csv",
     "delimiter": ",",
     "encoding": "utf-8"
+  },
+  "random_delay_ms": {
+    "between_actions_ms": [250, 900],
+    "between_rows_ms": [5000, 12000]
   },
   "steps": [
     {
@@ -282,7 +286,7 @@
       },
       "inputs_static": {
         "#img_prompt": "Don't use any text on the images",
-        "#img_brand_name": "hhasinsurance"
+        "#img_brand_name": ""
       },
       "checkboxes": {
         "#cc_mk_alt": true,
@@ -342,10 +346,23 @@
             "selector": ".oc-row",
             "state": "visible",
             "timeout_ms": 180000
+          },
+          "wait_for_button_enabled_after": {
+            "selector": "#magic_bag",
+            "timeout_ms": 180000
           }
         },
         {
           "selector": "button.tf-btn-run",
+          "wait_for_button_enabled_before": {
+            "selector": "button.tf-btn-run",
+            "timeout_ms": 60000
+          },
+          "wait_for_button_disabled": {
+            "selector": "button.tf-btn-run",
+            "timeout_ms": 10000,
+            "retry_click": true
+          },
           "wait_for_url_change": {
             "timeout_ms": 60000,
             "return_url": "https://seowriting.ai/tools/generation",
