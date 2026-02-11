@@ -1,0 +1,360 @@
+{
+  "timeout_ms": 45000,
+  "row_start": 1,
+  "row_end": 999999,
+  "browser": {
+    "type": "firefox",
+    "executable_path": "/usr/bin/firefox",
+    "user_data_dir": "~/.mozilla/firefox/spcudzwe.default",
+    "profile_dir": "",
+    "headless": false,
+    "slow_mo_ms": 50
+  },
+  "csv": {
+    "path": "input.csv",
+    "delimiter": ",",
+    "encoding": "utf-8"
+  },
+  "steps": [
+    {
+      "name": "1-click blog post",
+      "repeat": "per_row",
+      "url": "https://seowriting.ai/tools/generation",
+      "selects": {
+        "#sm_lang": { "value": "en" },
+        "#sm_type": { "value": "How-to guide" },
+        "#sm_size": { "value": "s" },
+        "#sm_tone": { "value": "professional" },
+        "#sm_quality": { "value": "9" },
+        "#sm_point_view": { "value": "3" },
+        "#sm_readability": { "value": "4" },
+        "#sm_target_country": { "value": "1" },
+        "#sm_rm_words": { "value": "2", "force": true },
+        "#sm_brand_voice": { "value": "8293" },
+        "#sm_images": { "value": "1" },
+        "#sm_img_quantity": { "value": "2" },
+        "#sm_img_size": { "value": "6" },
+        "#sm_img_style": { "value": "" },
+        "#sm_youtube": { "value": "" },
+        "#sm_video_quantity": { "value": "1" },
+        "#sm_placing_scheme": { "value": "1", "force": true },
+        "#sm_il_site": { "value": "102491" },
+        "#sm_web": { "value": "2" },
+        "#sm_pc_site_id": { "value": "102491" },
+        "#sm_pc_status": { "value": "2" }
+      },
+      "selects_from_csv": {
+        "#sm_lang": {
+          "column": "lang",
+          "search": true
+        },
+        "#sm_type": {
+          "column": "type"
+        },
+        "#sm_size": {
+          "column": "size",
+          "match": "value",
+          "map": {
+            "X-Small": "xs",
+            "Small": "s",
+            "Medium": "m",
+            "Large": "l"
+          }
+        },
+        "#sm_tone": {
+          "column": "tone",
+          "match": "value",
+          "map": {
+            "Friendly": "friendly",
+            "Professional": "professional",
+            "Informational": "informational",
+            "Transactional": "transactional",
+            "Inspirational": "inspirational",
+            "Neutral": "neutral",
+            "Witty": "witty",
+            "Casual": "casual",
+            "Authoritative": "authoritative",
+            "Encouraging": "encouraging",
+            "Persuasive": "persuasive",
+            "Poetic": "poetic"
+          }
+        },
+        "#sm_quality": {
+          "column": "ai_model",
+          "match": "value",
+          "map": {
+            "Default": "10",
+            "GPT-4o Mini & GPT-4o": "9",
+            "GPT-4o": "5",
+            "GPT-5 Mini & GPT-5": "29",
+            "GPT-5.2 + Real-Time SERP": "38",
+            "GPT-5.2": "39",
+            "Claude 4.5 Sonnet + Real-Time SERP": "32",
+            "Claude 4.5 Sonnet": "31",
+            "Claude 4.1 Opus": "35",
+            "Claude 3.5 Haiku": "11",
+            "Llama 4 + Real-Time SERP + CTA": "22",
+            "Llama 4 Maverick": "21",
+            "DeepSeek V3.2 + Real-Time SERP": "36",
+            "DeepSeek V3.2": "37",
+            "GPT-4 Turbo": "4",
+            "GPT-o1": "14"
+          }
+        },
+        "#sm_point_view": {
+          "column": "point_view",
+          "match": "value",
+          "map": {
+            "None": "0",
+            "First person singular": "1",
+            "First person singular (I, me, my, mine)": "1",
+            "First person plural": "2",
+            "First person plural (we, us, our, ours)": "2",
+            "Second person": "3",
+            "Second person (you, your, yours)": "3",
+            "Third person": "4",
+            "Third person (he, she, it, they)": "4"
+          }
+        },
+        "#sm_readability": {
+          "column": "readability",
+          "match": "value",
+          "map": {
+            "5th grade": "1",
+            "5th grade, easily understood by 11-year-olds": "1",
+            "6th grade": "2",
+            "6th grade, conversational language": "2",
+            "7th grade": "3",
+            "7th grade, fairly easy to read": "3",
+            "8th & 9th grade": "4",
+            "8th & 9th grade, easily understood": "4",
+            "10th to 12th grade": "5",
+            "10th to 12th grade, fairly difficult to read": "5",
+            "College": "6",
+            "College, difficult to read": "6",
+            "College graduate": "7",
+            "College graduate, very difficult to read": "7",
+            "Professional": "8",
+            "Professional, extremely difficult to read": "8"
+          }
+        },
+        "#sm_target_country": {
+          "column": "target_country",
+          "search": true
+        },
+        "#sm_rm_words": {
+          "column": "rm_words",
+          "match": "value",
+          "force": true,
+          "map": {
+            "No AI Words Removal": "",
+            "Basic AI Words Removal": "1",
+            "Extended AI Words Removal": "2"
+          }
+        },
+        "#sm_brand_voice": {
+          "column": "brand_voice",
+          "match": "value",
+          "map": {
+            "Hhas insurance": "8293",
+            "Professional Healthcare Guide": "8242",
+            "SHAVA CO": "8292",
+            "Upsourcemedia.com": "8269"
+          }
+        },
+        "#sm_images": {
+          "column": "images",
+          "match": "value",
+          "map": {
+            "None": "",
+            "Z-Image (Pro)": "2",
+            "Nano Banana (Ultra)": "3",
+            "FLUX.1 (Lite)": "1"
+          }
+        },
+        "#sm_img_quantity": {
+          "column": "img_quantity",
+          "match": "value"
+        },
+        "#sm_img_size": {
+          "column": "img_size",
+          "match": "value",
+          "map": {
+            "960×768 (5:4)": "1",
+            "1024×640 (8:5)": "2",
+            "1024×768 (4:3)": "3",
+            "1152×768 (3:2)": "4",
+            "1280×704 (20:11)": "5",
+            "1344×768 (16:9)": "6",
+            "768×1344 (9:16)": "9",
+            "1024×1024 (1:1)": "8"
+          }
+        },
+        "#sm_img_style": {
+          "column": "img_style",
+          "match": "value",
+          "map": {
+            "None": "",
+            "Photo": "1",
+            "Cartoon": "2",
+            "Cubism": "3",
+            "Expressionism": "4",
+            "Cyberpunk": "5",
+            "Fantasy": "6",
+            "Cinematic": "7",
+            "Abstract": "8",
+            "Impressionism": "9",
+            "Surrealism": "10",
+            "Anime": "11",
+            "Comic Book": "12"
+          }
+        },
+        "#sm_youtube": {
+          "column": "youtube",
+          "match": "value",
+          "map": {
+            "None": "",
+            "Yes": "1"
+          }
+        },
+        "#sm_video_quantity": {
+          "column": "video_quantity",
+          "match": "value"
+        },
+        "#sm_placing_scheme": {
+          "column": "placing_scheme",
+          "match": "value",
+          "force": true,
+          "map": {
+            "Sequentially in each section": "1",
+            "Distribute evenly": "2",
+            "Alternate image and video": "3",
+            "Alternate video and image": "4",
+            "First images, then videos": "5",
+            "First videos, then images": "6"
+          }
+        },
+        "#sm_il_site": {
+          "column": "il_site",
+          "search": true
+        },
+        "#sm_pc_site_id": {
+          "column": "pc_site",
+          "search": true
+        },
+        "#sm_pc_status": {
+          "column": "pc_status",
+          "match": "value",
+          "map": {
+            "Publish": "1",
+            "Draft": "0",
+            "Schedule": "2"
+          }
+        }
+      },
+      "wait_for_selectors": [
+        { "selector": "#sm_web_source_date", "state": "visible", "timeout_ms": 30000 },
+        { "selector": "#sm_pc_status", "state": "visible", "timeout_ms": 30000 }
+      ],
+      "selects_after": {
+        "#sm_web_source_date": { "value": "1Y" }
+      },
+      "selects_from_csv_after": {
+        "#sm_web_source_date": {
+          "column": "web_source_date",
+          "match": "value",
+          "map": {
+            "Last 24 hours": "1D",
+            "Last Week": "7D",
+            "Last Month": "1M",
+            "Last Year": "1Y",
+            "All Time": ""
+          }
+        }
+      },
+      "inputs_from_csv_required": {
+        "#main_keyword": "keyword"
+      },
+      "inputs_from_csv": {
+        "#tf_details": "details",
+        "#img_prompt": "img_prompt",
+        "#img_brand_name": "img_brand_name"
+      },
+      "inputs_static": {
+        "#img_prompt": "Don't use any text on the images",
+        "#img_brand_name": "hhasinsurance"
+      },
+      "checkboxes": {
+        "#cc_mk_alt": true,
+        "#cc_img_alt_text": false,
+        "#cc_outline_cb": true
+      },
+      "checkboxes_from_csv": {
+        "#cc_mk_alt": "mk_alt"
+      },
+      "date_increment": [
+        {
+          "selector": "input[name='pc_date']",
+          "base_date": "2026-02-13",
+          "format": "%Y-%m-%d",
+          "offset_days": 1,
+          "start_at": 1,
+          "only_if": {
+            "column": "pc_status",
+            "value": "Schedule",
+            "allow_empty": true
+          }
+        }
+      ],
+      "clicks": [
+        {
+          "selector": "#gen_title",
+          "wait_for_input_value": {
+            "selector": "#inp_title",
+            "min_length": 3,
+            "timeout_ms": 120000
+          }
+        },
+        {
+          "selector": ".tfk-erase-btn",
+          "force": true
+        },
+        {
+          "selector": "#gen_keywords",
+          "wait_for_selector": {
+            "selector": ".kic-item",
+            "state": "visible",
+            "timeout_ms": 120000
+          }
+        },
+        {
+          "selector": "button.tf-hook-btn",
+          "column": "hook_type",
+          "default_text": "Statistical or Fact"
+        },
+        {
+          "selector": "#magic_bag",
+          "wait_for_enabled_before": {
+            "selector": "#magic_bag",
+            "timeout_ms": 120000
+          },
+          "wait_for_selector": {
+            "selector": ".oc-row",
+            "state": "visible",
+            "timeout_ms": 180000
+          }
+        },
+        {
+          "selector": "button.tf-btn-run",
+          "wait_for_url_change": {
+            "timeout_ms": 60000,
+            "return_url": "https://seowriting.ai/tools/generation",
+            "return_delay_ms": 2000,
+            "reload_if_no_nav": false
+          }
+        }
+      ],
+      "sleep_ms": 2000
+    }
+  ]
+}
