@@ -130,7 +130,7 @@ If you need an update or a custom change, contact me using one of these options:
 
 1. Open an issue in this repository (recommended).
 2. Send me a direct message with your requested change.
-3. Email me your request: `your-email@example.com`.
+3. Email me your request: `zulqurnaincheema45@gmail.com`.
 
 When you contact me, include:
 - What you want changed
