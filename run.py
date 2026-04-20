@@ -12,6 +12,46 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = "config.json"
+HTML_FORM_FLOW = [
+    ("required_input", "#main_keyword"),
+    ("click", "#gen_title"),
+    ("select", "#sm_lang"),
+    ("select", "#sm_type"),
+    ("select", "#sm_size"),
+    ("select", "#sm_tone"),
+    ("select", "#sm_quality"),
+    ("select", "#sm_point_view"),
+    ("select", "#sm_readability"),
+    ("select", "#sm_target_country"),
+    ("select", "#sm_rm_words"),
+    ("select", "#sm_brand_voice"),
+    ("input", "#tf_details"),
+    ("select", "#sm_images"),
+    ("select", "#sm_img_quantity"),
+    ("select", "#sm_img_size"),
+    ("select", "#sm_img_style"),
+    ("input", "#img_prompt"),
+    ("input", "#img_brand_name"),
+    ("checkbox", "#cc_mk_alt"),
+    ("checkbox", "#cc_img_alt_text"),
+    ("select", "#sm_youtube"),
+    ("select", "#sm_video_quantity"),
+    ("select", "#sm_placing_scheme"),
+    ("click", ".tfk-erase-btn"),
+    ("click", "#gen_keywords"),
+    ("click", "button.tf-hook-btn"),
+    ("select", "#sm_il_site"),
+    ("select", "#sm_web"),
+    ("wait", "#sm_web_source_date"),
+    ("select_after", "#sm_web_source_date"),
+    ("checkbox", "#cc_outline_cb"),
+    ("click", "#magic_bag"),
+    ("select", "#sm_pc_site_id"),
+    ("wait", "#sm_pc_status"),
+    ("select", "#sm_pc_status"),
+    ("date", "input[name='pc_date']"),
+    ("click", "button.tf-btn-run"),
+]
 
 
 def load_config(path: Path) -> Dict[str, Any]:
@@ -257,6 +297,147 @@ def build_select_from_csv(sel_cfg: Any, row: Dict[str, str]) -> Optional[Dict[st
     return sel_value
 
 
+def iter_effective_selects(
+    static_cfg: Dict[str, Any], csv_cfg: Dict[str, Any], row: Dict[str, str]
+):
+    seen: set[str] = set()
+    for selector, sel_value in static_cfg.items():
+        seen.add(selector)
+        csv_sel_cfg = csv_cfg.get(selector)
+        if csv_sel_cfg is not None:
+            csv_value = build_select_from_csv(csv_sel_cfg, row)
+            if csv_value is not None:
+                yield selector, csv_value
+                continue
+        yield selector, sel_value
+
+    for selector, sel_cfg in csv_cfg.items():
+        if selector in seen:
+            continue
+        csv_value = build_select_from_csv(sel_cfg, row)
+        if csv_value is not None:
+            yield selector, csv_value
+
+
+def iter_required_csv_inputs(inputs_cfg: Dict[str, str], row: Dict[str, str]):
+    for selector, column in inputs_cfg.items():
+        value = row.get(column, "")
+        if is_empty(value):
+            raise ValueError(f"Missing required CSV value for column '{column}'")
+        yield selector, value, f"{column} -> {value}"
+
+
+def iter_optional_and_static_inputs(step: Dict[str, Any], row: Dict[str, str]):
+    optional_cfg = step.get("inputs_from_csv", {})
+    static_cfg = step.get("inputs_static", {})
+    processed: set[str] = set()
+
+    for selector in optional_cfg:
+        if selector in processed:
+            continue
+        column = optional_cfg[selector]
+        value = row.get(column, "")
+        if not is_empty(value):
+            processed.add(selector)
+            yield selector, value, f"{column} -> {value}"
+            continue
+        if selector in static_cfg:
+            processed.add(selector)
+            yield selector, static_cfg[selector], "[static]"
+
+    for selector, value in static_cfg.items():
+        if selector in processed or selector in optional_cfg:
+            continue
+        yield selector, value, "[static]"
+
+
+def iter_effective_checkboxes(
+    static_cfg: Dict[str, Any], csv_cfg: Dict[str, str], row: Dict[str, str]
+):
+    seen: set[str] = set()
+    for selector, checked in static_cfg.items():
+        seen.add(selector)
+        column = csv_cfg.get(selector)
+        if column:
+            parsed = parse_bool(row.get(column, ""))
+            if parsed is not None:
+                yield selector, parsed, f"{column} -> {parsed}"
+                continue
+        yield selector, bool(checked), str(bool(checked))
+
+    for selector, column in csv_cfg.items():
+        if selector in seen:
+            continue
+        parsed = parse_bool(row.get(column, ""))
+        if parsed is not None:
+            yield selector, parsed, f"{column} -> {parsed}"
+
+
+def get_effective_select_value(
+    step: Dict[str, Any], selector: str, row: Dict[str, str], after: bool = False
+) -> Optional[Any]:
+    static_key = "selects_after" if after else "selects"
+    csv_key = "selects_from_csv_after" if after else "selects_from_csv"
+    static_cfg = step.get(static_key, {})
+    csv_cfg = step.get(csv_key, {})
+
+    if selector in csv_cfg:
+        csv_value = build_select_from_csv(csv_cfg[selector], row)
+        if csv_value is not None:
+            return csv_value
+
+    return static_cfg.get(selector)
+
+
+def get_required_input_value(
+    step: Dict[str, Any], selector: str, row: Dict[str, str]
+) -> Optional[tuple[str, str]]:
+    column = step.get("inputs_from_csv_required", {}).get(selector)
+    if not column:
+        return None
+    value = row.get(column, "")
+    if is_empty(value):
+        raise ValueError(f"Missing required CSV value for column '{column}'")
+    return value, f"{column} -> {value}"
+
+
+def get_optional_input_value(
+    step: Dict[str, Any], selector: str, row: Dict[str, str]
+) -> Optional[tuple[str, str]]:
+    optional_cfg = step.get("inputs_from_csv", {})
+    static_cfg = step.get("inputs_static", {})
+
+    if selector in optional_cfg:
+        column = optional_cfg[selector]
+        value = row.get(column, "")
+        if not is_empty(value):
+            return value, f"{column} -> {value}"
+
+    if selector in static_cfg:
+        return static_cfg[selector], "[static]"
+
+    return None
+
+
+def get_effective_checkbox_value(
+    step: Dict[str, Any], selector: str, row: Dict[str, str]
+) -> Optional[tuple[bool, str]]:
+    csv_cfg = step.get("checkboxes_from_csv", {})
+    static_cfg = step.get("checkboxes", {})
+
+    if selector in csv_cfg:
+        column = csv_cfg[selector]
+        parsed = parse_bool(row.get(column, ""))
+        if parsed is not None:
+            return parsed, f"{column} -> {parsed}"
+
+    if selector in static_cfg:
+        checked = bool(static_cfg[selector])
+        return checked, str(checked)
+
+    return None
+
+
 def wait_for_input_value(page, selector: str, min_length: int, timeout_ms: int) -> None:
     page.wait_for_function(
         """({selector, minLength}) => {
@@ -428,6 +609,74 @@ def click_item(page, click_cfg: Any, timeout_ms: int) -> None:
         time.sleep(float(sleep_ms) / 1000.0)
 
 
+def resolve_click_cfg(click_cfg: Any, row: Dict[str, str]) -> Optional[Any]:
+    if not isinstance(click_cfg, dict):
+        return click_cfg
+
+    if "column" in click_cfg or "text_from_csv" in click_cfg:
+        column = click_cfg.get("column") or click_cfg.get("text_from_csv")
+        map_dict = click_cfg.get("map")
+        text_value = resolve_csv_value(row, column, map_dict)
+        if text_value is None:
+            text_value = click_cfg.get("default_text")
+        if is_empty(text_value):
+            return None
+        resolved_cfg = dict(click_cfg)
+        resolved_cfg.pop("column", None)
+        resolved_cfg.pop("text_from_csv", None)
+        resolved_cfg.pop("map", None)
+        resolved_cfg.pop("default_text", None)
+        resolved_cfg["text"] = text_value
+        return resolved_cfg
+
+    return click_cfg
+
+
+def find_click_cfg(step: Dict[str, Any], selector: str) -> Optional[Any]:
+    for click_cfg in step.get("clicks", []):
+        if isinstance(click_cfg, str) and click_cfg == selector:
+            return click_cfg
+        if isinstance(click_cfg, dict) and click_cfg.get("selector") == selector:
+            return click_cfg
+    return None
+
+
+def find_wait_cfg(step: Dict[str, Any], selector: str) -> Optional[Dict[str, Any]]:
+    for wait_cfg in step.get("wait_for_selectors", []):
+        if wait_cfg.get("selector") == selector:
+            return wait_cfg
+    return None
+
+
+def find_date_cfg(step: Dict[str, Any], selector: str) -> Optional[Dict[str, Any]]:
+    for date_cfg in step.get("date_increment", []):
+        if date_cfg.get("selector") == selector:
+            return date_cfg
+    return None
+
+
+def run_clicks(
+    page,
+    clicks: List[Any],
+    row: Dict[str, str],
+    phase: str,
+    timeout_ms: int,
+    delay_cfg: Optional[Dict[str, Any]],
+) -> None:
+    for click_cfg in clicks:
+        click_phase = "late"
+        if isinstance(click_cfg, dict):
+            click_phase = str(click_cfg.get("phase", "late")).lower()
+        if click_phase != phase:
+            continue
+
+        resolved_cfg = resolve_click_cfg(click_cfg, row)
+        if resolved_cfg is None:
+            continue
+        click_item(page, resolved_cfg, timeout_ms)
+        random_sleep(delay_cfg, "between_actions_ms")
+
+
 def apply_date_increment(
     page,
     date_cfg: Dict[str, Any],
@@ -481,126 +730,99 @@ def run_step(
         except PlaywrightTimeoutError:
             log(f"  Navigation timeout: {url}")
 
-    # Select menus
-    for selector, sel_value in step.get("selects", {}).items():
-        log(f"  Select {selector}: {sel_value}")
-        select_menu_option(page, selector, sel_value, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Select menus from CSV (optional)
-    for selector, sel_cfg in step.get("selects_from_csv", {}).items():
-        sel_value = build_select_from_csv(sel_cfg, row)
-        if sel_value is None:
-            continue
-        log(f"  Select {selector}: {sel_value}")
-        select_menu_option(page, selector, sel_value, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Wait for selectors before next phase
-    for wait_cfg in step.get("wait_for_selectors", []):
-        wait_selector = wait_cfg.get("selector")
-        if not wait_selector:
-            continue
-        wait_state = wait_cfg.get("state", "visible")
-        wait_timeout = int(wait_cfg.get("timeout_ms", timeout_ms))
-        log(f"  Waiting for {wait_selector} ({wait_state})")
-        page.wait_for_selector(wait_selector, state=wait_state, timeout=wait_timeout)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Select menus that appear after toggles
-    for selector, sel_value in step.get("selects_after", {}).items():
-        log(f"  Select {selector}: {sel_value}")
-        select_menu_option(page, selector, sel_value, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Select menus from CSV after toggles (optional)
-    for selector, sel_cfg in step.get("selects_from_csv_after", {}).items():
-        sel_value = build_select_from_csv(sel_cfg, row)
-        if sel_value is None:
-            continue
-        log(f"  Select {selector}: {sel_value}")
-        select_menu_option(page, selector, sel_value, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Static inputs
-    for selector, value in step.get("inputs_static", {}).items():
-        log(f"  Fill {selector}: [static]")
-        fill_input(page, selector, value, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Required inputs from CSV
-    for selector, column in step.get("inputs_from_csv_required", {}).items():
-        value = row.get(column, "")
-        if is_empty(value):
-            raise ValueError(f"Missing required CSV value for column '{column}'")
-        log(f"  Fill {selector}: {column} -> {value}")
-        fill_input(page, selector, value, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Optional inputs from CSV (skip empty to keep defaults)
-    for selector, column in step.get("inputs_from_csv", {}).items():
-        value = row.get(column, "")
-        if is_empty(value):
-            continue
-        log(f"  Fill {selector}: {column} -> {value}")
-        fill_input(page, selector, value, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Keywords from CSV (tag input)
-    kw_cfg = step.get("keywords_from_csv")
-    if kw_cfg:
-        kw_col = kw_cfg.get("column")
-        kw_delim = kw_cfg.get("delimiter", ";")
-        kw_input = kw_cfg.get("input_selector", ".kic-add textarea")
-        if kw_col:
-            log(f"  Keywords from {kw_col}")
-            add_keywords(page, kw_input, row.get(kw_col, ""), kw_delim, timeout_ms)
-            random_sleep(delay_cfg, "between_actions_ms")
-
-    # Checkboxes
-    for selector, checked in step.get("checkboxes", {}).items():
-        log(f"  Checkbox {selector}: {checked}")
-        set_checkbox(page, selector, bool(checked), timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Checkboxes from CSV (optional)
-    for selector, column in step.get("checkboxes_from_csv", {}).items():
-        raw_value = row.get(column, "")
-        parsed = parse_bool(raw_value)
-        if parsed is None:
-            continue
-        log(f"  Checkbox {selector}: {column} -> {parsed}")
-        set_checkbox(page, selector, parsed, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Date increment (schedule per row)
-    for date_cfg in step.get("date_increment", []):
-        log(f"  Date increment for {date_cfg.get('selector')}")
-        apply_date_increment(page, date_cfg, row, row_index, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
-
-    # Clicks
-    for click_cfg in step.get("clicks", []):
-        if isinstance(click_cfg, dict) and (
-            "column" in click_cfg or "text_from_csv" in click_cfg
-        ):
-            column = click_cfg.get("column") or click_cfg.get("text_from_csv")
-            map_dict = click_cfg.get("map")
-            text_value = resolve_csv_value(row, column, map_dict)
-            if text_value is None:
-                text_value = click_cfg.get("default_text")
-            if is_empty(text_value):
+    for action_type, selector in HTML_FORM_FLOW:
+        if action_type == "required_input":
+            resolved = get_required_input_value(step, selector, row)
+            if resolved is None:
                 continue
-            resolved_cfg = dict(click_cfg)
-            resolved_cfg.pop("column", None)
-            resolved_cfg.pop("text_from_csv", None)
-            resolved_cfg.pop("map", None)
-            resolved_cfg.pop("default_text", None)
-            resolved_cfg["text"] = text_value
+            value, source = resolved
+            log(f"  Fill {selector}: {source}")
+            fill_input(page, selector, value, timeout_ms)
+            random_sleep(delay_cfg, "between_actions_ms")
+            continue
+
+        if action_type == "input":
+            resolved = get_optional_input_value(step, selector, row)
+            if resolved is None:
+                continue
+            value, source = resolved
+            log(f"  Fill {selector}: {source}")
+            fill_input(page, selector, value, timeout_ms)
+            random_sleep(delay_cfg, "between_actions_ms")
+            continue
+
+        if action_type == "select":
+            sel_value = get_effective_select_value(step, selector, row, after=False)
+            if sel_value is None:
+                continue
+            log(f"  Select {selector}: {sel_value}")
+            select_menu_option(page, selector, sel_value, timeout_ms)
+            random_sleep(delay_cfg, "between_actions_ms")
+            continue
+
+        if action_type == "select_after":
+            sel_value = get_effective_select_value(step, selector, row, after=True)
+            if sel_value is None:
+                continue
+            log(f"  Select {selector}: {sel_value}")
+            select_menu_option(page, selector, sel_value, timeout_ms)
+            random_sleep(delay_cfg, "between_actions_ms")
+            continue
+
+        if action_type == "checkbox":
+            resolved = get_effective_checkbox_value(step, selector, row)
+            if resolved is None:
+                continue
+            checked, source = resolved
+            log(f"  Checkbox {selector}: {source}")
+            set_checkbox(page, selector, checked, timeout_ms)
+            random_sleep(delay_cfg, "between_actions_ms")
+            continue
+
+        if action_type == "wait":
+            wait_cfg = find_wait_cfg(step, selector)
+            if wait_cfg is None:
+                continue
+            log(f"  Waiting for {selector} ({wait_cfg.get('state', 'visible')})")
+            page.wait_for_selector(
+                selector,
+                state=wait_cfg.get("state", "visible"),
+                timeout=int(wait_cfg.get("timeout_ms", timeout_ms)),
+            )
+            random_sleep(delay_cfg, "between_actions_ms")
+            continue
+
+        if action_type == "date":
+            date_cfg = find_date_cfg(step, selector)
+            if date_cfg is None:
+                continue
+            log(f"  Date increment for {selector}")
+            apply_date_increment(page, date_cfg, row, row_index, timeout_ms)
+            random_sleep(delay_cfg, "between_actions_ms")
+            continue
+
+        if action_type == "click":
+            click_cfg = find_click_cfg(step, selector)
+            if click_cfg is None:
+                continue
+            resolved_cfg = resolve_click_cfg(click_cfg, row)
+            if resolved_cfg is None:
+                continue
             click_item(page, resolved_cfg, timeout_ms)
-        else:
-            click_item(page, click_cfg, timeout_ms)
-        random_sleep(delay_cfg, "between_actions_ms")
+            random_sleep(delay_cfg, "between_actions_ms")
+            if selector == "#gen_keywords":
+                kw_cfg = step.get("keywords_from_csv")
+                if kw_cfg:
+                    kw_col = kw_cfg.get("column")
+                    kw_delim = kw_cfg.get("delimiter", ";")
+                    kw_input = kw_cfg.get("input_selector", ".kic-add textarea")
+                    if kw_col:
+                        log(f"  Keywords from {kw_col}")
+                        add_keywords(
+                            page, kw_input, row.get(kw_col, ""), kw_delim, timeout_ms
+                        )
+                        random_sleep(delay_cfg, "between_actions_ms")
+            continue
 
     # Wait for selector if configured
     wait_cfg = step.get("wait_for")
